@@ -5,5 +5,5 @@ setup(
     version=1.0,
     package=['custom_modules'],
     python_requires='>=3.10, <4',
-    install_requires=['python-mnist==0.7']
+    install_requires=['python-mnist==0.7, numpy==2.2.6']
 )

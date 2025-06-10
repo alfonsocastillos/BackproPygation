@@ -1,3 +1,4 @@
 local_env/
 dataset/
-custom_modules.egg-info/
+libs/custom_modules.egg-info/
+libs/custom_modules/__pycache__

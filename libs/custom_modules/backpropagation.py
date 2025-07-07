@@ -15,12 +15,13 @@ class Backpropagation():
     __neurons: list[np.ndarray]
     __weights: list[np.ndarray]
     __biases: list[np.ndarray]
+    __cost_gradient: list[dict[str, np.ndarray]]
     __act_function: Callable[[int | float | np.ndarray], float | np.ndarray]
     __act_deriv: Callable[[int | float | np.ndarray], float | np.ndarray]
     __logger: logging.Logger = logging.getLogger(__name__)
 
-    def __init__(self, out_pattern: dict, hidden_layers: int=1, output_layer: int=10, act_function: str='sigmoid', ) -> None:
-        '''
+    def __init__(self, out_pattern: dict, hidden_layers: int=1, output_layer: int=10, act_function: str="sigmoid",) -> None:
+        """
         Constructor for the Backpropagation class.
 
         Args:            
@@ -28,34 +29,42 @@ class Backpropagation():
             hidden_layers (optional): The number of hidden layers inside the ANN. Default: 1.
             output_layer (optional): The number of neurons that form the output layer. Default: 10.                        
             act_function (optional): The activation function for the neurons. Allowed values: sigmoid, tanh, ReLU. Default: sigmoid.
-        '''
+        """
         self.__hidden_layers = hidden_layers
         self.__output_layer = output_layer
         self.__out_pattern = out_pattern
         match act_function.lower():
-            case 'sigmoid':
+            case "sigmoid":
                 self.__act_function = math_utils.sigmoid
                 self.__act_deriv = math_utils.d_sigmoid
-            case 'tanh':
+            case "tanh":
                 self.__act_function = math_utils.tanh
                 self.__act_deriv = math_utils.d_tanh
-            case 'relu':
+            case "relu":
                 self.__act_function = math_utils.relu
                 self.__act_deriv = math_utils.d_relu
             case _:
-                self.__logger.error('Unknown activation function.')
-                self.__logger.error('Activation must be one of: sigmoid, tanh or ReLU.')
-                raise Exception('Unknown activation function.')
+                self.__logger.error("Unknown activation function.")
+                self.__logger.error("Activation must be one of: sigmoid, tanh or ReLU.")
+                raise Exception("Unknown activation function.")
 
-    def train(self, data_dir: str='dataset', batch_size: int=10) -> None:
-        '''
+    def train(self, data_dir: str="dataset", batch_size: int=10, learn_rate: float=0.1) -> None:
+        """
         Trains the ANN based on the provided parameters supplied on the constructor.
 
         Args:
-            batch_size (optional): The number of training examples used before modifying weights. Default: 10.
-            data_dir (optional): The path to the directory containing the training and testing data. Default: 'dataset'.
-        '''
-        self.__logger.info(f'Training began with batch size of {batch_size}')
+            batch_size (optional): The number of training examples used before modifying weights. Default: 10. For a stocastic learning, specify a batch size of 1.
+            data_dir (optional): The path to the directory containing the training and testing data. Default: "dataset".
+            learn_rate (optional): The learning rate, i.e. how much weights and biases are modified each batch. Must be between 0 and 1.
+        """
+        if batch_size < 1 or type(batch_size) != int:
+            self.__logger.error("Incorrect batch size provided.")
+            raise Exception("Incorrect batch size for training. Must be an integer greater than 0.")
+        if not 0 < learn_rate <= 1:
+            self.__logger.error("Learning rate not within the valid range.")
+            raise Exception("Learning rate not within valid range. Must be within 0 and 1.")
+
+        self.__logger.info(f"Training began with batch size of {batch_size}")
 
         # Get shuffled training data from data directory.
         training_data: tuple = utils.shuffle(utils.get_training_data(True, data_dir))
@@ -64,26 +73,46 @@ class Backpropagation():
 
         # Check for discrepancies in sizes.
         if len(self.__images) != self.__labels.size or len(self.__images) < 1:
-            self.__logger.error('Discrepancy with the dataset size.')
-            self.__logger.error(f'Number of images {len(self.__images)}, Number of labels {self.__labels.size()}')
-            raise Exception('Data discrepancy while training neural network.')
+            self.__logger.error("Discrepancy with the dataset size.")
+            self.__logger.error(f"Number of images {len(self.__images)}, Number of labels {self.__labels.size()}")
+            raise Exception("Data discrepancy while training neural network.")
         self.__input_layer = len(self.__images[0])
         
         # Initialize neurons, weights and biases.
         self.__initialize_network()
 
         # Train neural network.
-        while len(self.__images) > 0:
+        while len(self.__images) > 0:            
+
+            # Reset Cost gradient with each batch.
+            for layer in range(len(self.__weights)):
+                self.__cost_gradient[layer] = {
+                    "dw": np.zeros(self.__weights[layer].shape),
+                    "db": np.zeros(self.__biases[layer].shape)
+                }
+
+            # Compute forward and back propagation for each training example in the batch.
             for _ in range(batch_size):
                 label: int = int(self.__labels[-1])
                 self.__labels = self.__labels[:-1]
                 self.__forward(self.__images.pop())
+                self.__back(label)
+            
+            # At the end of the batch, update weights and biases.
+            for layer in range(len(self.__cost_gradient)):
+                self.__weights[layer] = self.__weights[layer] - learn_rate * self.__cost_gradient[layer]["dw"] / batch_size
+                self.__biases[layer] = self.__biases[layer] - learn_rate * self.__cost_gradient[layer]["db"] / batch_size
                                        
     def test(self) -> None:
         pass
 
     def __forward(self, image: list) -> None:
+        """
+        Compute the output for the ANN for a given training example.
 
+        Args:
+            image: the training example given as a list of values.
+        """
         # Normalize values between 0 and 1
         self.__neurons[0] = np.array(image) / 255
 
@@ -96,17 +125,64 @@ class Backpropagation():
                 )
             )
 
-    def __backward(self) -> None:
-        pass
+    def __back(self, label: int) -> None:
+        """
+        Compute the back propagation for the given training example.
+
+        Args:
+            label: the expected output for the training example.
+        """
+        dC_da: np.ndarray = 2 * self.__neurons[-1] - self.__out_pattern[label]       
+        for layer in range(len(self.__weights), 0, -1):
+            dC_da = self.__calc_layer_cost(layer, dC_da)
+            
+
+    def __calc_layer_cost(self, layer: int, dC_da: np.ndarray) -> np.ndarray:
+        """
+        Computes the influence that each weight and bias has on the Cost function and stores those values.
+
+        Args:
+            layer: the current layer index.
+            dC_da: a matrix describing the influence of each output neuron for this layer on the Cost function.
+
+        Returns: 
+            A matrix (dC/da) describing the influence of each input neuron for this layer on the Cost function.
+        """
+        # Compute z for this layer.
+        z: np.ndarray = np.add(
+            np.matmul(self.__weights[layer - 1], self.__neurons[layer - 1]),
+            self.__biases[layer - 1]
+        )
+
+        # Compute dC/db and dC/dw.
+        dC_db: np.ndarray = np.multiply(               
+            self.__act_deriv(z),
+            dC_da
+        )
+        self.__cost_gradient[layer - 1]["db"] += dC_db
+        
+        dC_dw: np.ndarray = np.matmul(            
+            dC_db[:,np.newaxis],
+            self.__neurons[layer - 1][np.newaxis]
+        )
+        self.__cost_gradient[layer - 1]["dw"] += dC_dw
+
+        # Compute dC_da for this layer.
+        dC_da = np.matmul(
+            dC_db[np.newaxis],
+            self.__weights[layer - 1]
+        )
+
+        return np.transpose(dC_da)[:,0]
 
     def __rand_layer_size(self) -> int:
-        '''
+        """
         Determines a random number of neurons that a hidden layer should have. This number is always between the number
         of neurons present in the input layer and the output layer and never more than twice the neurons in the input layer.
 
         Returns:
             An integer with the calculated number of neurons for the given hidden layer.
-        '''
+        """
         lower_lim, upper_lim = self.__input_layer, self.__output_layer
         if upper_lim < lower_lim:
             lower_lim, upper_lim = upper_lim, lower_lim
@@ -115,12 +191,12 @@ class Backpropagation():
         return size
 
     def __initialize_network(self) -> None:
-        '''
+        """
         Initializes weights, biases and neurons for this neural network.
-        '''
+        """
         self.__neurons = []
         self.__weights = []
-        self.__biases = []
+        self.__biases = []        
 
         # Establish input layer size.
         self.__neurons.append(np.empty(len(self.__images[0])))
@@ -147,3 +223,5 @@ class Backpropagation():
             np.random.uniform(-1, 1, (self.__output_layer, last_layer_size))
         )
         self.__biases.append(np.random.uniform(-1, 1, self.__output_layer))
+
+        self.__cost_gradient = [None for _ in range(len(self.__weights))]

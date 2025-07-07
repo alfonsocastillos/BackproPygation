@@ -75,4 +75,5 @@ def plot_image(image: list) -> None:
 def plot_accuracy(label_success: dict) -> None:
     pyplot.bar(range(len(label_success)), list(label_success.values()), align='center')
     pyplot.xticks(range(len(label_success)), list(label_success.keys()))    
+    pyplot.title('Neural Network recognition accuracy.')
     pyplot.show()

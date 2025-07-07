@@ -5,6 +5,8 @@ from typing import Callable
 from custom_modules import utils
 from custom_modules import math_utils
 
+logging.basicConfig()
+
 class Backpropagation():
     __input_layer: int
     __hidden_layers: int
@@ -19,7 +21,8 @@ class Backpropagation():
     __act_function: Callable[[int | float | np.ndarray], float | np.ndarray]
     __act_deriv: Callable[[int | float | np.ndarray], float | np.ndarray]
     __logger: logging.Logger = logging.getLogger(__name__)
-
+    __logger.setLevel(logging.INFO)    
+    
     def __init__(self, out_pattern: dict, hidden_layers: int=1, output_layer: int=10, act_function: str="sigmoid",) -> None:
         """
         Constructor for the Backpropagation class.
@@ -103,8 +106,62 @@ class Backpropagation():
                 self.__weights[layer] = self.__weights[layer] - learn_rate * self.__cost_gradient[layer]["dw"] / batch_size
                 self.__biases[layer] = self.__biases[layer] - learn_rate * self.__cost_gradient[layer]["db"] / batch_size
                                        
-    def test(self) -> None:
-        pass
+    def test(self, data_dir: str="dataset") -> float:
+        """
+        Test the accuracy of the Neural Network with a set of testing data.
+
+        Args:
+            data_dir: the directory where the testing data is contained. 
+
+        Return: 
+            Success rate for this ANN.
+        """
+
+        # No need to shuffle testing data.
+        test_data: tuple = utils.get_testing_data(True, data_dir)
+        self.__images = test_data[0]
+        self.__labels = test_data[1]
+        total_examples: int = len(self.__images)
+        overall_success: int = 0
+        label_success: dict = {success: [0, 0] for success in self.__out_pattern}
+
+        # Check for discrepancies in sizes.
+        if len(self.__images) != self.__labels.size or len(self.__images) < 1:
+            self.__logger.error("Discrepancy with the dataset size.")
+            self.__logger.error(f"Number of images {len(self.__images)}, Number of labels {self.__labels.size()}")
+            raise Exception("Data discrepancy while testing neural network.")
+        
+        while len(self.__images) > 0:
+            label: int = int(self.__labels[-1])
+            label_success[label][1] += 1
+            self.__labels = self.__labels[:-1]
+            self.__forward(self.__images.pop())
+            prediction: int = np.argmax(self.__neurons[-1])
+            if prediction == label:
+                overall_success += 1
+                label_success[label][0] += 1
+        rate = overall_success / total_examples
+        self.__logger.info(f"Success rate: {rate * 100}%")
+        self.__logger.info(f"Per label success: {label_success}")
+        for label, metrics in label_success.items():
+            label_success[label] = metrics[0] / metrics[1]
+        label_success["Overall"] = rate
+        utils.plot_accuracy(label_success)
+        return rate
+
+    def test_single(self, label=None) -> None:
+        """
+        Test a single random example.
+
+        Args:
+            label: (optional) The desired element type to test.
+        """
+        image, label = utils.get_random(True, "dataset", label)
+        self.__logger.info(f"Testing label: {label}")    
+        self.__forward(image)
+        prediction: int = np.argmax(self.__neurons[-1])
+        self.__logger.info(f"ANN guess: {prediction}")
+        utils.plot_image(image)
 
     def __forward(self, image: list) -> None:
         """

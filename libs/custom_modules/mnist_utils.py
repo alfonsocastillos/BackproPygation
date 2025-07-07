@@ -16,7 +16,7 @@ def get_training_data(data_dir: str) -> tuple[list, array]:
     mdata = MNIST(data_dir)
     return mdata.load_training()
 
-def get_test_data(data_dir: str) -> tuple[list, array]:
+def get_testing_data(data_dir: str) -> tuple[list, array]:
     '''
     Gets the test data from the MNIST dataset directory.
 
